@@ -1,0 +1,1 @@
+# vpnc-script-hooks-linux

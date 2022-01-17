@@ -1,0 +1,59 @@
+#!/bin/sh
+
+del_exclude_route() {
+	# FIXED: this DOES NOT delete existing routes which are
+	# identical to split-exclude routes specificed by VPNGATEWAY
+	NETWORK="$1"
+	NETMASKLEN="$3"
+	der_i=0
+	while [ $der_i -lt "$IF" ]; do
+		eval if_net="\$IF_IP4NET_$der_i"
+		[ "$(dec2ip $(($(ip2dec "$NETWORK") & $(bits2dec "$NETMASKLEN"))))" != "$if_net" ] || return
+		der_i=$((1+der_i))
+	done
+	$IPROUTE route "$route_syntax_del" "$NETWORK/$NETMASKLEN"
+	$IPROUTE route flush cache 2>/dev/null
+}
+
+dec2ip() {
+	dec2=$(($1 & 0xffffffff))
+	dec2ip=''
+	dec2delim=''
+	for dec2e in 24 16 8 0; do
+		dec2octet=$(((dec2 >> dec2e) & 0xff))
+		dec2ip="$dec2ip$dec2delim$dec2octet"
+		dec2=$((dec2 - (dec2octet << dec2e)))
+		[ "$dec2" -ne 0 ] || break
+		dec2delim=.
+	done
+	echo "$dec2ip"
+	unset dec2 dec2ip dec2delim dec2e
+}
+
+ip2dec() {
+	ip2dec=0
+	ip2shift=24
+	for ip2octet in $(echo "$1" | tr . '\n'); do
+		ip2dec=$((ip2dec + (ip2octet << ip2shift)))
+		ip2shift=$((ip2shift - 8))
+	done
+	echo $ip2dec
+	unset ip2dec ip2shift
+}
+
+bits2dec() {
+	echo $((~((1 << 32 - $1) - 1)))
+}
+
+IF=0
+for IF_LINK in $(ip link | sed -ne '/^[0-9]: /{s///; s/:.*//; /^lo$/d; /^'"$TUNDEV"'$/d; p}'); do
+	eval IF_NAME_$IF="$IF_LINK"
+	IF_IP4="$(ip address show dev "$IF_LINK" | awk '/inet /{print $2}')"
+	[ -n "$IF_IP4" ] || continue
+	IFS=/ read -r IF_IP4 IF_BITS <<EOF
+$IF_IP4
+EOF
+	eval IF_IP4NET_$IF="$(dec2ip $(($(ip2dec "$IF_IP4") & $(bits2dec "$IF_BITS"))))"
+	IF=$((1 + IF))
+done
+unset IF_LINK IF_IP4 IF_BITS

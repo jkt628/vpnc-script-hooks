@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set_default_route() {
+	$IPROUTE route | sed -ne '/^default/{p;q}' > "$DEFAULT_ROUTE_FILE"
+	# modern NetworkManager uses metric to control routing
+	if grep 'metric [0-9]' "$DEFAULT_ROUTE_FILE" >/dev/null 2>&1; then
+		rm "$DEFAULT_ROUTE_FILE"
+	fi
+	$IPROUTE route replace default dev "$TUNDEV"
+	$IPROUTE route flush cache 2>/dev/null
+}
